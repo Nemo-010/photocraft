@@ -210,7 +210,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev \
-            desktop-file-utils appstream python3-yaml zsync
+            desktop-file-utils appstream python3-yaml
           curl -fsSL -o "$RUNNER_TEMP/nfpm.deb" \
             "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_${{ matrix.deb }}.deb"
           sudo dpkg -i "$RUNNER_TEMP/nfpm.deb"
@@ -221,7 +221,7 @@ jobs:
       - name: Apply version override
         if: inputs.version != ''
         run: cargo xtask version set "$PHOTOCRAFT_VERSION"
-      - name: Build and package (AppImage, deb, rpm, tar.gz)
+      - name: Build and package (deb, rpm, tar.gz)
         env:
           CRAFT_FONTS_DIR: ${{ github.workspace }}/craft-fonts
           CRAFT_FONTS_REQUIRED: "1"
@@ -232,17 +232,55 @@ jobs:
           dpkg-deb --contents dist/release/*.deb | grep -E 'usr/bin/photocraft$|metainfo|applications'
           ldd target/release/photocraft
           python3 -c "import yaml; m = yaml.safe_load(open('packaging/linux/flatpak/ai.storyteller.photocraft.yml')); assert m['id'] == 'ai.storyteller.photocraft'"
-          for appimage in dist/release/*.AppImage; do
-            chmod +x "$appimage"
-            APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --version
-            # Update information (#349) is embedded, and the .zsync for delta updates sits beside it.
-            "$appimage" --appimage-updateinformation | grep -F 'gh-releases-zsync|'
-            test -s "$appimage.zsync"
-          done
       - uses: actions/upload-artifact@v4
         with:
           name: release-linux-${{ matrix.arch }}
           path: dist/release/*
+          if-no-files-found: error
+
+  appimage:
+    name: AppImage ${{ matrix.arch }}
+    needs: [version, linux]
+    # Repackages the Linux job's tarball into the Anylinux AppImage (the same binaries as the
+    # deb/rpm/tarball/Flatpak). quick-sharun deploys the libraries the app loads at runtime from
+    # the build host, so this runs on Arch in the pkgforge container and installs the tarball
+    # under /usr first; see packaging/linux/appimage.sh.
+    runs-on: ${{ matrix.runner }}
+    container: ghcr.io/pkgforge-dev/archlinux:latest
+    # No `environment: release`: this job signs nothing, so it gets no release secrets.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, runner: ubuntu-latest }
+          - { arch: aarch64, runner: ubuntu-24.04-arm }
+    env:
+      PHOTOCRAFT_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preparing container (quick-sharun)
+        uses: pkgforge-dev/anylinux-setup-action@b2d1ce4216f71162e00ae58fa11ee9aeb723d0d5 # v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-linux-${{ matrix.arch }}
+          path: dist/linux
+      - name: Build the Anylinux AppImage
+        run: packaging/linux/appimage.sh "dist/linux/photocraft-$PHOTOCRAFT_VERSION-linux-${{ matrix.arch }}.tar.gz"
+      - name: Check the AppImage
+        run: |
+          appimage="dist/release/photocraft-$PHOTOCRAFT_VERSION-linux-${{ matrix.arch }}.AppImage"
+          chmod +x "$appimage"
+          "$appimage" --appimage-extract-and-run --version
+          # Update information (#349) is embedded, and the .zsync for delta updates sits beside it.
+          "$appimage" --appimage-updateinformation | grep -F 'gh-releases-zsync|'
+          test -s "$appimage.zsync"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-appimage-${{ matrix.arch }}
+          # appimagetool also writes an `appinfo` sidecar; it is not a release asset.
+          path: |
+            dist/release/*.AppImage
+            dist/release/*.AppImage.zsync
           if-no-files-found: error
 
   flatpak:
@@ -372,7 +410,7 @@ jobs:
 
   release:
     name: Draft GitHub Release
-    needs: [version, macos, windows, linux, flatpak, freebsd, web]
+    needs: [version, macos, windows, linux, appimage, flatpak, freebsd, web]
     runs-on: ubuntu-latest
     environment: release
     permissions:

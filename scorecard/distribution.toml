@@ -20,7 +20,7 @@ note = "release.yml:113-114; signing skipped with a warning until the signing ma
 id = "DIST-3"
 target = "Linux x86_64 and aarch64: AppImage, deb, rpm, tar.gz"
 status = "done"
-note = "release.yml:162-163,186"
+note = "release.yml:183-241 (linux + appimage jobs)"
 
 [[item]]
 id = "DIST-4"
@@ -73,4 +73,4 @@ id = "DIST-220-5"
 target = "Linux AppImage x86_64 + aarch64 ship; Flatpak kept; Flathub later (#173)"
 status = "partial"
 issue = 220
-note = "AppImage and Flatpak ship (release.yml:162-216); Flathub not done"
+note = "AppImage (Anylinux) and Flatpak ship (release.yml:241,283); Flathub not done"

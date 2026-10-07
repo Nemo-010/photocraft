@@ -51,8 +51,8 @@ in the dialog.
 | macOS 11+ (universal: Apple silicon + Intel) | `photocraft-<v>-macos-universal.dmg`, `photocraft-cli-<v>-macos-universal.zip` | `macos-15` |
 | Windows 10+ x64 | `photocraft-<v>-windows-x64.msi`, `photocraft-<v>-windows-x64-portable.zip` | `windows-latest` |
 | Windows 10+ x86 (32-bit) | `photocraft-<v>-windows-x86.msi`, `photocraft-<v>-windows-x86-portable.zip` | `windows-latest` |
-| Linux x86_64 | `photocraft-<v>-linux-x86_64.{AppImage,AppImage.zsync,deb,rpm,tar.gz,flatpak}` | `ubuntu-22.04` (Flatpak: `ubuntu-24.04`) |
-| Linux aarch64 | `photocraft-<v>-linux-aarch64.{AppImage,AppImage.zsync,deb,rpm,tar.gz,flatpak}` | `ubuntu-22.04-arm` (Flatpak: `ubuntu-24.04-arm`) |
+| Linux x86_64 | `photocraft-<v>-linux-x86_64.{AppImage,AppImage.zsync,deb,rpm,tar.gz,flatpak}` | `ubuntu-22.04` (AppImage: Arch container; Flatpak: `ubuntu-24.04`) |
+| Linux aarch64 | `photocraft-<v>-linux-aarch64.{AppImage,AppImage.zsync,deb,rpm,tar.gz,flatpak}` | `ubuntu-22.04-arm` (AppImage: Arch container; Flatpak: `ubuntu-24.04-arm`) |
 | FreeBSD 14 x86_64 | `photocraft-<v>-freebsd-x86_64.tar.gz` | FreeBSD 14.3 VM on `ubuntu-latest` |
 | Web | `photocraft-web-<v>.zip` (static site; see [`packaging/web/README.md`](../packaging/web/README.md)) | `ubuntu-latest` |
 
@@ -149,7 +149,9 @@ Locally on Windows: `dotnet tool install -g wix --version 5.0.2`, then
 
 ### Linux
 
-`packaging/linux/package.sh` stages one FHS tree and makes every format from it. The tree
+`packaging/linux/package.sh` stages one FHS tree and makes the `.deb`, `.rpm` and `.tar.gz`
+from it (`packaging/linux/appimage.sh` and `packaging/linux/flatpak-bundle.sh` repackage the
+tarball). The tree
 holds both binaries, `ai.storyteller.photocraft.desktop`, hicolor icons from 16 px to 512 px
 plus a scalable SVG, AppStream metainfo, and a shared-mime-info file for `.pcraft`, `.psb` and
 `.qoi`.
@@ -157,11 +159,15 @@ plus a scalable SVG, AppStream metainfo, and a shared-mime-info file for `.pcraf
 Why these formats:
 
 - **AppImage** runs on any distribution without installing anything. It's the
-  download-and-go option and the fallback for distros the packages don't cover. It's built
-  with the maintained `AppImage/appimagetool`, whose static runtime doesn't need libfuse2.
-  Each AppImage embeds update information (`gh-releases-zsync|…|latest|…`, #349) and ships
-  with a `.zsync` beside it, so AppImageUpdate, AppImageLauncher and similar tools can find
-  the next release and download only the blocks that changed.
+  download-and-go option and the fallback for distros the packages don't cover. A separate
+  `appimage` job repackages the Linux job's tarball with
+  [quick-sharun](https://github.com/pkgforge-dev/Anylinux-AppImages) in the pkgforge Arch
+  container, so it bundles its own glibc and the libraries the app loads at runtime (the
+  [Anylinux](https://github.com/pkgforge-dev/Anylinux-AppImages) method) and needs no FUSE or
+  FHS layout; see `packaging/linux/appimage.sh`. Each AppImage embeds update information
+  (`gh-releases-zsync|…|latest|…`, #349), ships with a `.zsync` beside it so AppImageUpdate,
+  AppImageLauncher and similar tools can find the next release and download only the blocks
+  that changed, and carries the anylinux self-updater.
 - **.deb** covers Debian, Ubuntu, Mint, Pop!_OS and elementary. **.rpm** covers Fedora, RHEL
   and its clones, and openSUSE. Both integrate with the menu, MIME and icon caches (the
   `postinst.sh` hook) and uninstall cleanly. Both are built by
@@ -202,15 +208,18 @@ All Linux binaries are built on Ubuntu 22.04 and need **glibc ≥ 2.35**: Ubuntu
 Debian 12+, Fedora 36+, RHEL 10, openSUSE Tumbleweed. They link only glibc and libgcc_s. X11,
 Wayland, xkbcommon, Vulkan and EGL are loaded at runtime from the system, which is also where
 the GPU driver has to come from. That's why the .deb and .rpm declare them as dependencies
-(the full list, and why each is there, is in `packaging/linux/nfpm.yaml`) and the AppImage
-doesn't bundle them. The Flatpak gets them from the freedesktop runtime. Because the AppImage
-and the tarball can't declare dependencies, `photocraft` checks for the libraries its session
-(X11 or Wayland) needs before it opens a window (`apps/photocraft/src/linux_libs.rs`) and, if
-one is missing, prints the package to install and exits with status 1 instead of crashing.
-`PHOTOCRAFT_SKIP_LIB_CHECK=1` skips the check.
+(the full list, and why each is there, is in `packaging/linux/nfpm.yaml`). The Flatpak gets
+them from the freedesktop runtime, and the AppImage bundles them with its own glibc, so neither
+is bound by the glibc floor above. Because the tarball can't declare dependencies,
+`photocraft` checks for the libraries its session (X11 or Wayland) needs before it opens a
+window (`apps/photocraft/src/linux_libs.rs`) and, if one is missing, prints the package to
+install and exits with status 1 instead of crashing. `PHOTOCRAFT_SKIP_LIB_CHECK=1` skips the
+check.
 
 Locally (on Linux): install [nfpm](https://nfpm.goreleaser.com/install/), then
-`packaging/linux/package.sh` (or `--formats "deb tar"`).
+`packaging/linux/package.sh` (or `--formats "deb tar"`). The AppImage needs the pkgforge Arch
+container (`packaging/linux/appimage.sh` runs `quick-sharun` and installs the tarball to
+`/usr` first), so it is built in CI, not on a developer machine.
 
 ### FreeBSD
 

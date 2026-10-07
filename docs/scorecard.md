@@ -236,7 +236,7 @@ Never-crash attribute on 26 of 26 crate roots.
 |---|---|---|---|---|
 | DIST-1 | macOS universal build (aarch64 + x86_64), signed and notarized | done |  | release.yml:66,75,93 (macos-15); 0.2.0 shipped notarized |
 | DIST-2 | Windows x64 and x86 builds | partial |  | release.yml:113-114; signing skipped with a warning until the signing material exists |
-| DIST-3 | Linux x86_64 and aarch64: AppImage, deb, rpm, tar.gz | done |  | release.yml:162-163,186 |
+| DIST-3 | Linux x86_64 and aarch64: AppImage, deb, rpm, tar.gz | done |  | release.yml:183-241 (linux + appimage jobs) |
 | DIST-4 | Flatpak single-file bundles, x86_64 and aarch64 | done |  | release.yml:204-216 (#163) |
 | DIST-5 | Web build (wasm32, trunk) | done |  | release.yml:312 |
 | DIST-6 | FreeBSD 14 x86_64 tar.gz (/usr/local tree) built in a FreeBSD VM | partial |  | release.yml:242-283 (freebsd job) + packaging/freebsd/package.sh; layout checked with --dry-run, not yet produced by a release run |
@@ -244,7 +244,7 @@ Never-crash attribute on 26 of 26 crate roots.
 | DIST-220-2 | Windows ARM64 (aarch64-pc-windows-msvc) in the release matrix, signed like x64 | missing | [#220](https://github.com/storytold/photocraft/issues/220) | release.yml:113-114 only x86_64 and i686 msvc |
 | DIST-220-3 | In-app bug report with reviewable diagnostics that opens a prefilled issue | missing | [#220](https://github.com/storytold/photocraft/issues/220) | No bug report dialog in crates |
 | DIST-220-4 | Translation coverage per language reported by xtask; RTL layout for Arabic and Hebrew | missing | [#220](https://github.com/storytold/photocraft/issues/220) | No i18n in crates or xtask (waits on #169) |
-| DIST-220-5 | Linux AppImage x86_64 + aarch64 ship; Flatpak kept; Flathub later (#173) | partial | [#220](https://github.com/storytold/photocraft/issues/220) | AppImage and Flatpak ship (release.yml:162-216); Flathub not done |
+| DIST-220-5 | Linux AppImage x86_64 + aarch64 ship; Flatpak kept; Flathub later (#173) | partial | [#220](https://github.com/storytold/photocraft/issues/220) | AppImage (Anylinux) and Flatpak ship (release.yml:241,283); Flathub not done |
 
 ## Open bugs
 

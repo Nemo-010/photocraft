@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
 # Build and package PhotoCraft for Linux (<arch> is x86_64 or aarch64):
 #
-#   $DIST/photocraft-<version>-linux-<arch>.AppImage  any distro with glibc >= the build host's
-#   $DIST/photocraft-<version>-linux-<arch>.AppImage.zsync  delta updates (needs zsyncmake)
 #   $DIST/photocraft-<version>-linux-<arch>.deb       Debian, Ubuntu, Mint, Pop!_OS, ...
 #   $DIST/photocraft-<version>-linux-<arch>.rpm       Fedora, openSUSE, RHEL, ...
 #   $DIST/photocraft-<version>-linux-<arch>.tar.gz    plain FHS-style tree (bin/, share/)
 #
-# Usage: packaging/linux/package.sh [--skip-build] [--formats "appimage deb rpm tar"]
+# Usage: packaging/linux/package.sh [--skip-build] [--formats "deb rpm tar"]
 #
-# Needs: cargo; nfpm for deb/rpm (https://nfpm.goreleaser.com); appimagetool for the AppImage
-# (downloaded into $CARGO_TARGET_DIR if missing). Build on an old distro (CI: Ubuntu 22.04,
-# glibc 2.35) so the binaries run on newer ones. Optional: desktop-file-validate, appstreamcli,
-# zsyncmake (the zsync package) for the AppImage's .zsync.
+# Needs: cargo; nfpm for deb/rpm (https://nfpm.goreleaser.com). Build on an old distro
+# (CI: Ubuntu 22.04, glibc 2.35) so the binaries run on newer ones. The AppImage is built
+# from the tarball by packaging/linux/appimage.sh in an Arch container; see docs/releasing.md.
+# Optional: desktop-file-validate, appstreamcli.
 set -euo pipefail
 # shellcheck source=../env.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
@@ -20,12 +18,12 @@ HERE="$ROOT/packaging/linux"
 APP_ID=ai.storyteller.photocraft
 
 SKIP_BUILD=0
-FORMATS="appimage deb rpm tar"
+FORMATS="deb rpm tar"
 while [ $# -gt 0 ]; do
   case "$1" in
     --skip-build) SKIP_BUILD=1; shift ;;
     --formats) FORMATS="$2"; shift 2 ;;
-    -h | --help) sed -n '2,15p' "$0"; exit 0 ;;
+    -h | --help) sed -n '2,13p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -90,49 +88,6 @@ if has deb || has rpm; then
   for fmt in deb rpm; do
     if has "$fmt"; then (cd "$ROOT" && nfpm package -f "$WORK/nfpm.yaml" -p "$fmt" -t "$DIST/$BASENAME.$fmt"); fi
   done
-fi
-
-# ---- AppImage -----------------------------------------------------------------------------------
-if has appimage; then
-  APPDIR="$WORK/PhotoCraft.AppDir"
-  cp -R "$STAGE" "$APPDIR"
-  mv "$APPDIR/usr/share/doc" "$WORK/doc-unused"
-  ln -s usr/bin/photocraft "$APPDIR/AppRun"
-  cp "$HERE/$APP_ID.desktop" "$APPDIR/$APP_ID.desktop"
-  cp "$ROOT/assets/app-icon/hicolor/256x256/apps/$APP_ID.png" "$APPDIR/$APP_ID.png"
-  ln -s "$APP_ID.png" "$APPDIR/.DirIcon"
-
-  TOOL="${APPIMAGETOOL:-$(command -v appimagetool || true)}"
-  if [ -z "$TOOL" ]; then
-    TOOL="$CARGO_TARGET_DIR/appimagetool-$ARCH.AppImage"
-    if [ ! -x "$TOOL" ]; then
-      curl -fsSL -o "$TOOL" "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$ARCH.AppImage"
-      chmod +x "$TOOL"
-    fi
-  fi
-  # Absolute, because appimagetool runs in $DIST below (CARGO_TARGET_DIR or APPIMAGETOOL may be
-  # relative, e.g. target/agent-<name>).
-  OUT="$(cd "$DIST" && pwd)/$BASENAME.AppImage"
-  APPDIR="$(cd "$APPDIR" && pwd)"
-  TOOL="$(cd "$(dirname "$TOOL")" && pwd)/$(basename "$TOOL")"
-  # A .zsync left by an earlier run would hide a missing zsyncmake and describe another file.
-  rm -f "$OUT.zsync"
-  # Update information (#349): AppImageUpdate, AppImageLauncher and the like read it from the
-  # file and fetch only the blocks that changed in a newer release, through the .zsync published
-  # next to each AppImage on GitHub Releases. `latest` is the newest published release that is
-  # not a pre-release. A fork's builds point at its own releases through GITHUB_REPOSITORY.
-  REPO="${GITHUB_REPOSITORY:-storytold/photocraft}"
-  UPDATE_INFO="gh-releases-zsync|${REPO%%/*}|${REPO#*/}|latest|photocraft-*-linux-$ARCH.AppImage.zsync"
-  # Extract-and-run: works without FUSE (containers, CI). The output embeds the static runtime,
-  # so users don't need libfuse2 either. With zsyncmake on the host (CI installs the zsync
-  # package) appimagetool also writes the .zsync, into its working directory, hence the cd.
-  (cd "$DIST" && ARCH="$ARCH" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" --no-appstream -u "$UPDATE_INFO" "$APPDIR" "$OUT")
-  echo "wrote $OUT"
-  if [ -s "$OUT.zsync" ]; then
-    echo "wrote $OUT.zsync"
-  else
-    warn "zsyncmake not found, so $OUT.zsync was not written; AppImage delta updates need it"
-  fi
 fi
 
 "$STAGE/usr/bin/photocraft-cli" --version
